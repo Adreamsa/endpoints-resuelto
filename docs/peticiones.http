@@ -1,0 +1,179 @@
+### =====================================================================
+### API de Cotización de Envíos
+### Levanta la app con `make run` y ejecuta estas peticiones con un clic
+### (IntelliJ IDEA, o VS Code con la extensión REST Client).
+### =====================================================================
+
+### Catálogo de zonas soportadas -> 200 OK
+GET http://localhost:8080/api/v1/zones
+
+### -------------------------------------------------------------------
+### CASO FELIZ
+### -------------------------------------------------------------------
+
+### Cotización estándar (3.5 kg) -> 200 OK
+### 140.00 base + 3.50 x 18.00 = 203.00, 2 días hábiles, overweight: false
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "METROPOLITAN",
+  "destination": "NATIONAL_CENTRAL",
+  "weightKg": 3.50
+}
+
+### Peso exactamente en el límite estándar (50 kg) -> 200 OK, overweight: false
+### Es el último peso SIN recargo. Ver la sección de inconsistencias del README.
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "METROPOLITAN",
+  "destination": "NATIONAL_EXTENDED",
+  "weightKg": 50.00
+}
+
+### Sobrepeso (55 kg) -> 200 OK, overweight: true
+### Tarifa estándar + 40% de recargo + 1 día hábil extra.
+### Total 2191.00 = (190.00 + 55 x 25.00) x 1.40
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "METROPOLITAN",
+  "destination": "NATIONAL_EXTENDED",
+  "weightKg": 55.00
+}
+
+### Último peso transportable (70 kg) -> 200 OK, overweight: true
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "NATIONAL_CENTRAL",
+  "destination": "INTERNATIONAL_NA",
+  "weightKg": 70.00
+}
+
+### Los códigos de zona se normalizan (minúsculas y espacios) -> 200 OK
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "  metropolitan ",
+  "destination": "national_central",
+  "weightKg": 1.00
+}
+
+### -------------------------------------------------------------------
+### ERRORES DE FORMATO -> 400
+### -------------------------------------------------------------------
+
+### Falta un campo obligatorio -> 400 VALIDATION_FAILED
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "METROPOLITAN",
+  "destination": "NATIONAL_CENTRAL"
+}
+
+### Tres campos inválidos a la vez -> 400 VALIDATION_FAILED
+### `details` trae los tres, no solo el primero.
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "",
+  "destination": "   ",
+  "weightKg": 0
+}
+
+### Peso negativo -> 400 VALIDATION_FAILED
+### Es un problema de rango, no una regla de negocio.
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "METROPOLITAN",
+  "destination": "NATIONAL_CENTRAL",
+  "weightKg": -2.00
+}
+
+### Más de 2 decimales en el peso -> 400 VALIDATION_FAILED
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "METROPOLITAN",
+  "destination": "NATIONAL_CENTRAL",
+  "weightKg": 3.5555
+}
+
+### JSON roto -> 400 MALFORMED_REQUEST
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{ "origin":
+
+### -------------------------------------------------------------------
+### REGLAS DE NEGOCIO -> 422
+### Sintácticamente impecables, semánticamente inválidas.
+### -------------------------------------------------------------------
+
+### Destino fuera del catálogo -> 422 UNSUPPORTED_ZONE
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "METROPOLITAN",
+  "destination": "MARS",
+  "weightKg": 3.50
+}
+
+### Origen fuera del catálogo -> 422 UNSUPPORTED_ZONE (field: "origin")
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "MARS",
+  "destination": "NATIONAL_CENTRAL",
+  "weightKg": 3.50
+}
+
+### Peso por encima del máximo transportable -> 422 WEIGHT_LIMIT_EXCEEDED
+### Ojo: 422 y no 400. El envío es válido, el servicio no lo puede mover.
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "METROPOLITAN",
+  "destination": "NATIONAL_EXTENDED",
+  "weightKg": 71.00
+}
+
+### Origen igual a destino -> 422 ORIGIN_EQUALS_DESTINATION
+POST http://localhost:8080/api/v1/quotes
+Content-Type: application/json
+
+{
+  "origin": "NATIONAL_CENTRAL",
+  "destination": "national_central",
+  "weightKg": 3.50
+}
+
+### -------------------------------------------------------------------
+### OTROS CÓDIGOS
+### -------------------------------------------------------------------
+
+### URL inexistente -> 404 RESOURCE_NOT_FOUND (mismo contrato de error)
+GET http://localhost:8080/api/v1/zonas
+
+### Método equivocado sobre una URL válida -> 405 METHOD_NOT_ALLOWED
+GET http://localhost:8080/api/v1/quotes
+
+### Content-Type equivocado -> 415 UNSUPPORTED_MEDIA_TYPE
+POST http://localhost:8080/api/v1/quotes
+Content-Type: text/plain
+
+origin=METROPOLITAN
